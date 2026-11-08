@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Format JSON and inspect Pega Deployment Manager rules locally in your browser.">
+  <title>Pega JSON Inspector – Deployment Rule Analyzer</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <script defer src="src/pega.js"></script>
+  <script defer src="src/sample.js"></script>
+  <script defer src="src/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">{ }</span>
+      <span><strong>Pega JSON Inspector</strong><small>Deployment Rule Analyzer</small></span>
+      <span class="version-badge">v1.1</span>
+    </div>
+    <div class="header-right"><span class="privacy-indicator"><span class="dot"></span> 100% local · No data uploads</span><span class="app-tag">DEV <span>→</span> STAGE <span>→</span> PROD</span></div>
+  </header>
+
+  <main class="app-container">
+    <section class="intro-bar" aria-label="Introduction">
+      <div><h1>Inspect Deployment JSON</h1><p>Paste JSON from <b>View → Application new/updated instances</b>, format it and filter by Pega rule type.</p></div>
+      <div class="intro-actions"><button id="sampleBtn" class="btn subtle" type="button">▣ Load sample</button><button id="clearBtn" class="btn subtle danger" type="button">✕ Clear</button></div>
+    </section>
+
+    <section class="workspace" aria-label="JSON formatter">
+      <div class="editor-card input-card">
+        <div class="editor-heading"><div class="editor-title"><span class="accent-bar"></span><b>1. Input</b><span class="minor">Raw JSON</span></div><div class="editor-tools"><button type="button" class="icon-button" id="pasteBtn" title="Paste from clipboard" aria-label="Paste">⎘</button><label for="fileInput" class="icon-button clickable" title="Upload JSON file" aria-label="Upload file">↥</label><input id="fileInput" type="file" accept=".json,.txt,application/json,text/plain" hidden></div></div>
+        <div class="input-area" id="dropTarget"><div id="lineNumbers" class="line-numbers" aria-hidden="true">1</div><textarea id="rawJson" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Enter raw JSON" placeholder="Paste JSON here…&#10;&#10;Copy the content from your Pega pipeline:&#10;Output parameters → Application new instances → View&#10;&#10;Or drag and drop a JSON file here."></textarea><div class="empty-hint" id="dropOverlay">Drop file here</div></div>
+        <div class="editor-footer"><span id="inputStats">0 characters · 1 line</span><span>JSON · UTF-8</span></div>
+      </div>
+
+      <div class="action-panel" aria-label="Tools">
+        <div class="action-panel-top"><span class="workflow-icon">⇆</span><b>Tools</b><span class="action-caption">JSON processing</span></div>
+        <button class="btn primary full" id="formatBtn" type="button">✦ Format / Beautify</button>
+        <button class="btn outline full" id="validateBtn" type="button">✓ Validate</button>
+        <button class="btn outline full" id="minifyBtn" type="button">⇤ Minify / Compact</button>
+        <div class="tool-label">Indentation</div>
+        <select id="indentSelect" aria-label="Indentation"><option value="2">2 spaces</option><option value="4">4 spaces</option><option value="tab">Tab</option></select>
+        <hr>
+        <div class="tool-label">Pega list type</div>
+        <select id="contextSelect" aria-label="Pega list type"><option value="auto">Auto-detect</option><option value="new">New instances</option><option value="updated">Updated instances</option></select>
+        <p class="tool-description">Choose a type when pasting an individual “View” list.</p>
+        <button class="btn subtle full" id="copyBtn" type="button">⎘ Copy result</button>
+        <button class="btn subtle full" id="downloadBtn" type="button">↓ Download JSON</button>
+        <div id="validationStatus" class="validation-status neutral" role="status" aria-live="polite"><span>●</span> Ready for JSON</div>
+      </div>
+
+      <div class="editor-card output-card">
+        <div class="editor-heading"><div class="editor-title"><span class="accent-bar purple"></span><b>2. Output</b><span class="minor">Formatted &amp; filterable</span></div><div class="editor-tools"><button class="icon-button" id="copyOutputIcon" title="Copy result" type="button" aria-label="Copy result">⎘</button></div></div>
+        <div class="output-tabs" role="tablist" aria-label="Choose output"><button type="button" id="fullTab" class="output-tab active" aria-selected="true" role="tab">Full JSON</button><button type="button" id="filteredTab" class="output-tab" aria-selected="false" role="tab">Filtered rules <span id="filteredTabCount">0</span></button></div>
+        <div class="code-pane" id="codePane"><pre id="formattedJson" class="code-content" aria-label="Formatted JSON">{
+  "hint": "Paste JSON on the left or load the sample"
+}</pre></div>
+        <div class="editor-footer"><span id="outputStats">Preview</span><span id="outputMode">JSON</span></div>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Deployment summary">
+      <div class="summary-heading"><div><h2>Rule analysis</h2><p>Detected Pega rules in your JSON, including nested structures.</p></div><div class="summary-actions"><button class="btn subtle" id="focusBtn" type="button">◎ Focus: Activities + Reports</button><button class="btn subtle" id="selectAllBtn" type="button">Select all</button><button class="btn subtle" id="deselectAllBtn" type="button">Clear selection</button></div></div>
+      <div class="metrics"><div class="metric"><span>Detected rules</span><strong id="totalRules">0</strong><small>unique instances</small></div><div class="metric"><span>Activities</span><strong id="activityCount">0</strong><small>Rule-Obj-Activity</small></div><div class="metric"><span>Report Definitions</span><strong id="reportCount">0</strong><small>Rule-Obj-Report-Definition</small></div><div class="metric"><span>New / updated</span><strong id="changeCounts">0 / 0</strong><small>when identifiable in JSON</small></div></div>
+      <div class="filters-section"><div class="filters-title"><b>Filter by rule type</b><span>Select multiple types</span></div><div id="typeFilters" class="type-filters"></div></div>
+      <div class="table-toolbar"><div class="search-box"><span aria-hidden="true">⌕</span><input type="search" id="ruleSearch" placeholder="Search rule name, class, ruleset or key…" aria-label="Search rules"></div><select id="changeFilter" aria-label="Filter by change"><option value="all">All changes</option><option value="new">New only</option><option value="updated">Updated only</option><option value="unknown">Unknown status</option></select><button class="btn primary" id="csvBtn" type="button">↓ Export CSV</button></div>
+      <div class="table-frame"><div class="table-scroll"><table><thead><tr><th>Rule type</th><th>Rule name</th><th>Applies To / Class</th><th>Ruleset</th><th>Version</th><th>Change</th><th>Details</th></tr></thead><tbody id="rulesBody"><tr><td colspan="7" class="empty-table">Paste JSON to see the deployed rules.</td></tr></tbody></table></div><div class="table-footer"><span id="tableSummary">0 rules shown</span><span>Select View to inspect a rule</span></div></div>
+      <div id="analysisNotice" class="analysis-notice" hidden></div>
+    </section>
+    <footer class="page-footer"><span>Pega JSON Inspector · Static web app · No backend</span><span>Review DEV → STAGE and STAGE → PROD · No direct Pega connection</span></footer>
+  </main>
+  <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-top"><div><small>Rule details</small><h2 id="detailTitle">Rule</h2></div><button class="icon-button" id="closeDialogBtn" type="button" aria-label="Close">✕</button></div><div id="detailFields" class="detail-fields"></div><p class="detail-label">Original JSON data</p><pre id="detailJson"></pre><div class="dialog-actions"><button class="btn subtle" id="copyKeyBtn" type="button">Copy key</button><button class="btn primary" id="closeDialogBottomBtn" type="button">Close</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
