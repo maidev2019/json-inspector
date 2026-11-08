@@ -23,6 +23,15 @@ You can also preview locally by opening `index.html` with a browser without runn
 6. Click **Focus: Activities + Reports** to narrow results to those types, or customize the type checkboxes.
 7. Search and export results as JSON or CSV.
 
+### Original-data guarantee (v1.2)
+
+- **Full JSON** formats the parsed input only: no generated JSON keys or fields.
+- **Filtered rules** keeps the original rule records and existing container keys, removing only entries/branches that do not match the selected filters. No `change`, `jsonPath`, `ruleType`, `name`, or other synthetic fields are injected. Original record fields, order, and duplicate entries are preserved.
+- When no rule matches, the filtered view is an empty array (`[]`) or object (`{}`), matching the original root container type.
+- The **analysis table** and its CSV overview can show *derived columns* (e.g. rule category, inferred change status, JSON path) for inspection; these values are never written into JSON data or the JSON exports. The CSV is an analysis report, not a lossless copy of the input.
+- Formatting changes whitespace and indentation but not the original JSON properties or values. Filtering necessarily removes non-matching content.
+
+
 ## Supported structures
 
 - Arrays of rule objects, for example with `pxObjClass`, `pyRuleName`, `pyClassName`, `pyRuleSet`, `pyRuleSetVersion`, `pzInsKey`.

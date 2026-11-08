@@ -181,13 +181,47 @@
       .some(v => String(v).toLowerCase().includes(query));
   }
 
-  function normalize(rule) {
-    return {
-      ruleType: rule.type, name: rule.name, appliesTo: rule.appliesTo,
-      ruleset: rule.ruleset, version: rule.version,
-      change: rule.change === 'new' ? 'New' : rule.change === 'updated' ? 'Updated' : 'Unknown',
-      pzInsKey: rule.key, jsonPath: rule.path
-    };
+  // Filter the *original* input tree. Never synthesize JSON properties or
+  // rewrite Pega records. Only remove branches that contain no matching rules.
+  // Arrays, record objects, Pega keys, and original primitive values are kept
+  // intact (including duplicate records and their original order).
+  function filterOriginalData(data, selectedTypes, search, change, options) {
+    const context = (options && options.context) || 'auto';
+    const NOT_MATCHED = Symbol('not matched');
+    let examined = 0;
+    const MAX_NODES = 120000, MAX_DEPTH = 40;
+
+    function visit(value, path, depth) {
+      if (++examined > MAX_NODES || depth > MAX_DEPTH) return NOT_MATCHED;
+      const rule = asRule(value, path, context);
+      if (rule) return matches(rule, selectedTypes, search, change) ? value : NOT_MATCHED;
+
+      if (Array.isArray(value)) {
+        const kept = [];
+        for (let i = 0; i < value.length; i++) {
+          const result = visit(value[i], path.concat(i), depth + 1);
+          if (result !== NOT_MATCHED) kept.push(result);
+        }
+        return kept.length ? kept : NOT_MATCHED;
+      }
+      if (value && typeof value === 'object') {
+        const kept = {};
+        for (const [key, child] of Object.entries(value)) {
+          // Consistent with analyze(): standalone rule-key strings are read only
+          // from probable rule / key fields, not from arbitrary text properties.
+          if (!(child && typeof child === 'object') &&
+              !(typeof child === 'string' && /(?:key|instance|rule|record)/i.test(key) && typeFromKey(child))) continue;
+          const result = visit(child, path.concat(key), depth + 1);
+          if (result !== NOT_MATCHED) kept[key] = result;
+        }
+        return Object.keys(kept).length ? kept : NOT_MATCHED;
+      }
+      return NOT_MATCHED;
+    }
+
+    const result = visit(data, [], 0);
+    if (result !== NOT_MATCHED) return result;
+    return data && typeof data === 'object' && !Array.isArray(data) ? {} : [];
   }
 
   function csvEscape(v) {
@@ -199,9 +233,9 @@
 
   function toCsv(rules) {
     const labels = ['Rule type', 'Name', 'Applies To', 'Ruleset', 'Version', 'Change', 'pzInsKey', 'JSON path'];
-    const rows = rules.map(r => { const n = normalize(r); return [n.ruleType, n.name, n.appliesTo, n.ruleset, n.version, n.change, n.pzInsKey, n.jsonPath]; });
+    const rows = rules.map(r => [r.type, r.name, r.appliesTo, r.ruleset, r.version, r.change === 'new' ? 'New' : r.change === 'updated' ? 'Updated' : 'Unknown', r.key, r.path]);
     return '\uFEFF' + [labels, ...rows].map(row => row.map(csvEscape).join(';')).join('\r\n');
   }
 
-  return { TYPES, parseInput, analyze, matches, normalize, toCsv, typeFromKey, classify };
+  return { TYPES, parseInput, analyze, matches, filterOriginalData, toCsv, typeFromKey, classify };
 });

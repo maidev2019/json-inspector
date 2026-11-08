@@ -30,7 +30,7 @@
   .action-panel .validation-status{padding:7px 8px}
 }
 
-  </style>
+</style>
   <script>
 /* Pega JSON Inspector — pure parsing and rule-analysis logic. No network calls. */
 (function (root, factory) {
@@ -215,13 +215,47 @@
       .some(v => String(v).toLowerCase().includes(query));
   }
 
-  function normalize(rule) {
-    return {
-      ruleType: rule.type, name: rule.name, appliesTo: rule.appliesTo,
-      ruleset: rule.ruleset, version: rule.version,
-      change: rule.change === 'new' ? 'New' : rule.change === 'updated' ? 'Updated' : 'Unknown',
-      pzInsKey: rule.key, jsonPath: rule.path
-    };
+  // Filter the *original* input tree. Never synthesize JSON properties or
+  // rewrite Pega records. Only remove branches that contain no matching rules.
+  // Arrays, record objects, Pega keys, and original primitive values are kept
+  // intact (including duplicate records and their original order).
+  function filterOriginalData(data, selectedTypes, search, change, options) {
+    const context = (options && options.context) || 'auto';
+    const NOT_MATCHED = Symbol('not matched');
+    let examined = 0;
+    const MAX_NODES = 120000, MAX_DEPTH = 40;
+
+    function visit(value, path, depth) {
+      if (++examined > MAX_NODES || depth > MAX_DEPTH) return NOT_MATCHED;
+      const rule = asRule(value, path, context);
+      if (rule) return matches(rule, selectedTypes, search, change) ? value : NOT_MATCHED;
+
+      if (Array.isArray(value)) {
+        const kept = [];
+        for (let i = 0; i < value.length; i++) {
+          const result = visit(value[i], path.concat(i), depth + 1);
+          if (result !== NOT_MATCHED) kept.push(result);
+        }
+        return kept.length ? kept : NOT_MATCHED;
+      }
+      if (value && typeof value === 'object') {
+        const kept = {};
+        for (const [key, child] of Object.entries(value)) {
+          // Consistent with analyze(): standalone rule-key strings are read only
+          // from probable rule / key fields, not from arbitrary text properties.
+          if (!(child && typeof child === 'object') &&
+              !(typeof child === 'string' && /(?:key|instance|rule|record)/i.test(key) && typeFromKey(child))) continue;
+          const result = visit(child, path.concat(key), depth + 1);
+          if (result !== NOT_MATCHED) kept[key] = result;
+        }
+        return Object.keys(kept).length ? kept : NOT_MATCHED;
+      }
+      return NOT_MATCHED;
+    }
+
+    const result = visit(data, [], 0);
+    if (result !== NOT_MATCHED) return result;
+    return data && typeof data === 'object' && !Array.isArray(data) ? {} : [];
   }
 
   function csvEscape(v) {
@@ -233,14 +267,14 @@
 
   function toCsv(rules) {
     const labels = ['Rule type', 'Name', 'Applies To', 'Ruleset', 'Version', 'Change', 'pzInsKey', 'JSON path'];
-    const rows = rules.map(r => { const n = normalize(r); return [n.ruleType, n.name, n.appliesTo, n.ruleset, n.version, n.change, n.pzInsKey, n.jsonPath]; });
+    const rows = rules.map(r => [r.type, r.name, r.appliesTo, r.ruleset, r.version, r.change === 'new' ? 'New' : r.change === 'updated' ? 'Updated' : 'Unknown', r.key, r.path]);
     return '\uFEFF' + [labels, ...rows].map(row => row.map(csvEscape).join(';')).join('\r\n');
   }
 
-  return { TYPES, parseInput, analyze, matches, normalize, toCsv, typeFromKey, classify };
+  return { TYPES, parseInput, analyze, matches, filterOriginalData, toCsv, typeFromKey, classify };
 });
 
-  </script>
+</script>
   <script>
 window.PEGA_SAMPLE = {
   deployment: { from: 'DEV', to: 'STAGE', application: 'DemoPricing', version: '01.01.01', note: 'Synthetic sample data – not real deployment records.' },
@@ -262,7 +296,7 @@ window.PEGA_SAMPLE = {
   ]
 };
 
-  </script>
+</script>
   <script>
 (function () {
   'use strict';
@@ -452,7 +486,9 @@ window.PEGA_SAMPLE = {
     if (!state.parsed || !state.parsed.ok) {
       state.outputText = state.parsed && !state.parsed.empty ? '// Enter valid JSON.\n// ' + state.parsed.message : '{\n  "hint": "Paste JSON on the left or load the sample"\n}';
     } else {
-      const data = isFiltered ? filteredRules().map(P.normalize) : state.parsed.data;
+      const data = isFiltered
+        ? P.filterOriginalData(state.parsed.data, state.selected, state.search, state.changeFilter, { context: $('contextSelect').value })
+        : state.parsed.data;
       state.outputText = JSON.stringify(data, null, state.compact ? 0 : indent());
     }
     $('codePane').scrollTop = 0;
@@ -578,14 +614,14 @@ window.PEGA_SAMPLE = {
   document.addEventListener('DOMContentLoaded', init);
 })();
 
-  </script>
+</script>
 </head>
 <body>
   <header class="app-header">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">{ }</span>
       <span><strong>Pega JSON Inspector</strong><small>Deployment Rule Analyzer</small></span>
-      <span class="version-badge">v1.1</span>
+      <span class="version-badge">v1.2</span>
     </div>
     <div class="header-right"><span class="privacy-indicator"><span class="dot"></span> 100% local · No data uploads</span><span class="app-tag">DEV <span>→</span> STAGE <span>→</span> PROD</span></div>
   </header>

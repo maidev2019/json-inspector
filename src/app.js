@@ -186,7 +186,9 @@
     if (!state.parsed || !state.parsed.ok) {
       state.outputText = state.parsed && !state.parsed.empty ? '// Enter valid JSON.\n// ' + state.parsed.message : '{\n  "hint": "Paste JSON on the left or load the sample"\n}';
     } else {
-      const data = isFiltered ? filteredRules().map(P.normalize) : state.parsed.data;
+      const data = isFiltered
+        ? P.filterOriginalData(state.parsed.data, state.selected, state.search, state.changeFilter, { context: $('contextSelect').value })
+        : state.parsed.data;
       state.outputText = JSON.stringify(data, null, state.compact ? 0 : indent());
     }
     $('codePane').scrollTop = 0;

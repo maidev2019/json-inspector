@@ -36,3 +36,45 @@ assert.equal(P.analyze(['RULE-OBJ-REPORT-DEFINITION TEST-WORK PRICINGREPORT #202
 const csv = P.toCsv([{type:'RULE-OBJ-ACTIVITY',name:'=SUM(A1)',appliesTo:'',ruleset:'',version:'',change:'unknown',key:'',path:'$[0]'}]);
 assert.ok(csv.includes("'=SUM(A1)"));
 console.log('✓ All parser tests passed.');
+
+// v1.2: Filtered JSON may remove entries, but MUST NOT synthesize properties.
+const original = {
+  deployment: { from: 'DEV', to: 'STAGE' },
+  applicationNewInstances: [
+    { pxObjClass: 'Rule-Obj-Activity', pyRuleName: 'CheckRate', pxCustomField: { steps: [1, 2, 3] } },
+    { pxObjClass: 'Rule-Obj-Report-Definition', pyRuleName: 'RateReport', flag: false },
+    { pxObjClass: 'Rule-Obj-Activity', pyRuleName: 'CheckRate', pxCustomField: { steps: [1, 2, 3] } },
+    { pxObjClass: 'Data-Admin-Operator-ID', pyName: 'demo' }
+  ],
+  applicationUpdatedInstances: [
+    { pxObjClass: 'Rule-Obj-Model', pyRuleName: 'SetDefaults', customValue: null },
+    'RULE-OBJ-ACTIVITY DEMO-WORK UPDATEPRICE #20260805T092400.000 GMT'
+  ]
+};
+const before = JSON.stringify(original);
+const types = new Set(['activity', 'report']);
+const result = P.filterOriginalData(original, types, '', 'all');
+const expected = {
+  applicationNewInstances: original.applicationNewInstances.slice(0, 3),
+  applicationUpdatedInstances: [original.applicationUpdatedInstances[1]]
+};
+assert.deepEqual(result, expected, 'filtered view must contain original unmodified rules and original container keys');
+assert.equal(JSON.stringify(original), before, 'filter must never mutate its input');
+assert.deepEqual(P.filterOriginalData(original, new Set(['report']), '', 'all'), {
+  applicationNewInstances: [original.applicationNewInstances[1]]
+});
+assert.deepEqual(P.filterOriginalData(original, new Set(['activity']), 'UPDATEPRICE', 'updated'), {
+  applicationUpdatedInstances: [original.applicationUpdatedInstances[1]]
+});
+assert.deepEqual(P.filterOriginalData(original, new Set(['activity']), '', 'new', {context:'new'}), {
+  applicationNewInstances: [original.applicationNewInstances[0], original.applicationNewInstances[2]],
+  applicationUpdatedInstances: [original.applicationUpdatedInstances[1]]
+});
+assert.deepEqual(P.filterOriginalData(original, new Set(), '', 'all'), {});
+assert.deepEqual(P.filterOriginalData(original.applicationNewInstances, new Set(), '', 'all'), []);
+assert.deepEqual(P.filterOriginalData(original.applicationNewInstances[0], new Set(['activity']), '', 'all'), original.applicationNewInstances[0]);
+assert.deepEqual(P.filterOriginalData(original.applicationNewInstances[0], new Set(['report']), '', 'all'), {});
+assert.deepEqual(P.filterOriginalData(['RULE-OBJ-ACTIVITY DEMO-WORK VALIDATE'], new Set(['activity']), '', 'all'), ['RULE-OBJ-ACTIVITY DEMO-WORK VALIDATE']);
+assert.deepEqual(P.filterOriginalData({ nested: { items: [{ pxObjClass: 'Rule-Obj-Activity', pyRuleName:'CheckRate', extra: true }] } }, new Set(['activity']), '', 'all'), { nested: { items: [{ pxObjClass: 'Rule-Obj-Activity', pyRuleName:'CheckRate', extra: true }] } });
+assert.deepEqual(P.filterOriginalData({ nested: { items: [{ pxObjClass: 'Rule-Obj-Activity', pyRuleName:'CheckRate' }] } }, new Set(['report']), '', 'all'), {});
+console.log('✓ Original-data preservation and filtering tests passed.');
